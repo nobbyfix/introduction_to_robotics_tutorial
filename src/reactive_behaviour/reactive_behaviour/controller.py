@@ -33,14 +33,19 @@ class VelocityController(Node):
         msg = Twist()
 
         if self.step < self.start_wait:
+            # delays start of bot to let sensors calibrate
+            # not sure if this is only relevant to the simulation
             self.get_logger().info("###### WAITING #####")
             self.publisher.publish(msg)
             return
         elif self.step % self.inc_wait == 0:
+            # increase target distance after a while,
+            # inc_wait is set so that the bot can finish a round before first increase
             self.get_logger().info("#" * 30)
             self.get_logger().info("|"*10 + " INCREASING " + "|"*10)
             self.get_logger().info("#" * 30)
             self.target_distance += self.inc
+            # time per round decreases as the bot draws smaller and smaller circles
             self.inc_wait /= 2
         
         if self.wall_is_left():
@@ -55,6 +60,9 @@ class VelocityController(Node):
     def in_dist(self):
         return self.target_distance < self.shortest_direction < self.target_distance + self.dist_tolerance
 
+    # determines if the shortest distance is on the left side of the bot (90°)
+    # acceptance skewed so that the bot self correct towards target distance.
+    # and changes to steeper angles, once the bot leaves the tolerance zone.
     def wall_is_left(self):
         if self.shortest_distance < self.target_distance:
             if self.shortest_distance < self.target_distance - self.dist_tolerance:
@@ -67,6 +75,8 @@ class VelocityController(Node):
             else:
                 return 90 >= self.shortest_direction >= 90-self.angle_tolerance
 
+    # helper function for turn_val
+    # determines which angle left wall should be
     def target_angle(self):
         if self.shortest_distance < self.target_distance - self.dist_tolerance:
             return 120
@@ -75,6 +85,8 @@ class VelocityController(Node):
         else:
             return 90
 
+    # returns turn direction for fastest possible turn
+    # TODO: I think this might be wrong and just works by accident
     def turn_val(self):
         a = self.target_angle()
         b = (a + 180) % 360
