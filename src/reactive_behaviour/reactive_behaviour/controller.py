@@ -15,7 +15,7 @@ class VelocityController(Node):
         self.create_timer(0.1, self.timer_cb)
         self.get_logger().info('controller node started')
 
-        self.target_distance = 0.3
+        self.target_distance = 0.2
         self.dist_tolerance = 0.1
         self.angle_tolerance = 15
 
@@ -25,7 +25,7 @@ class VelocityController(Node):
 
         self.step = 0
         self.start_wait = 100
-        self.inc_wait = 3000
+        self.inc_wait = 3750
         self.inc = 0.2
         
     def timer_cb(self):
@@ -46,7 +46,7 @@ class VelocityController(Node):
             self.get_logger().info("#" * 30)
             self.target_distance += self.inc
             # time per round decreases as the bot draws smaller and smaller circles
-            self.inc_wait /= 2
+            self.inc_wait -= 300
         
         if self.wall_is_left():
             # drive forward
