@@ -41,16 +41,20 @@ class LocatorNode(Node):
         # YOUR CODE GOES HERE:
         x_guess = self.last_position
         for i in range(10):
-            diffs = []
+            gradiants = []
             errs = []
             for a in self.anchor_ranges:
                 diff = x_guess - np.array([a.anchor.x, a.anchor.y, a.anchor.z])
-                diffs.append(diff)
                 errs.append(a.range - np.linalg.norm(diff))
+                gradiants.append(-diff / np.linalg.norm(diff))
             R = np.array(errs)
-            gradiants = [diff / np.linalg.norm(diff) for diff in diffs]
             delta_R = np.array(gradiants)
             x_guess -= np.linalg.pinv(delta_R) @ R
+            self.get_logger().info("-!"*15)
+            self.get_logger().info("R:" + str(R))
+            self.get_logger().info("delta_R:" + str(delta_R))
+            if max(R) < 0.001:
+                break
 
         self.get_logger().info(str(x_guess))
         
