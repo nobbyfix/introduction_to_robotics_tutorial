@@ -16,6 +16,8 @@ class LocatorNode(Node):
         self.initialized = False
         self.create_timer(1.0, self.timer_cb)
         self.get_logger().info('locator node started')
+
+        self.last_position = np.array([0.0, 0.0, 0.0])
         
     def range_cb(self, msg):
         self.anchor_ranges.append(msg)
@@ -35,10 +37,25 @@ class LocatorNode(Node):
     def calculate_position(self):
         if not len(self.anchor_ranges):
             return 0.0, 0.0, 0.0
-        
+
         # YOUR CODE GOES HERE:
-        x = np.mean([r.range for r in self.anchor_ranges]) - 0.5
-        return x, 0.0, 0.0
+        x_guess = self.last_position
+        for i in range(10):
+            diffs = []
+            errs = []
+            for a in self.anchor_ranges:
+                diff = x_guess - np.array([a.anchor.x, a.anchor.y, a.anchor.z])
+                diffs.append(diff)
+                errs.append(a.range - np.linalg.norm(diff))
+            R = np.array(errs)
+            gradiants = [diff / np.linalg.norm(diff) for diff in diffs]
+            delta_R = np.array(gradiants)
+            x_guess -= np.linalg.pinv(delta_R) @ R
+
+        self.get_logger().info(str(x_guess))
+        
+        self.last_position = x_guess
+        return x_guess[0], x_guess[1], x_guess[2] 
 
 
 def main(args=None):
