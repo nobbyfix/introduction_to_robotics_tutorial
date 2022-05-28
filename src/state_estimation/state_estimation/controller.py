@@ -16,8 +16,8 @@ FRONT_RANGE = 15
 MAX_POSITION_CACHE = 10
 
 DEFAULT_ROTATION_SPEED = np.pi/8
-FORWARD_SPEED_MIN = 0.05
-FORWARD_SPEED_MAX = 0.1
+FORWARD_SPEED_MIN = 0.1
+FORWARD_SPEED_MAX = 0.2
 SPEED_INCREASE = 0.01
 
 TURN_TOLERANCE = 0.15 # 0.15rad ~ 8.5deg
@@ -154,9 +154,10 @@ class VelocityController(Node):
                     return
 
                 # increase forward speed if position cache is full
-                elif self.forward_speed < FORWARD_SPEED_MAX:
+                elif self.forward_speed < FORWARD_SPEED_MAX and self.state_timer == 0:
                     self.forward_speed += SPEED_INCREASE
-                    self.get_logger().info(f"[Driving] Increased speed to '{self.forward_distance}'")
+                    self.state_timer = state_interval(0.5)
+                    self.get_logger().info(f"[Driving] Increased speed to '{self.forward_speed}'")
 
             # keep driving forward in driving state
             self.drive(linear=self.forward_speed)
@@ -182,7 +183,12 @@ class VelocityController(Node):
         if any(self.goal != goal):
             self.get_logger().info(f'[GoalCB] Received a new goal: (x={goal[0]}, y={goal[1]})')
             self.goal = goal
-            self.startup()
+
+            # force rotation after receiving a new goal
+            if self.state == RobotState.DRIVING:
+                rotation_angle = self.calc_goal_rotation_angle()
+                self.get_logger().warn(f"[GoalCB] Rotation by '{rotation_angle}rad'")
+                self.sleep(lambda: self.rotate(rotation_angle), 0.5)
 
     def laser_cb(self, msg):
         forward_ranges = msg.ranges[0:FRONT_RANGE] + msg.ranges[-FRONT_RANGE:]
