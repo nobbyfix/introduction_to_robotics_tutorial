@@ -50,9 +50,9 @@ class LocatorNode(Node):
             R = np.array(errs)
             delta_R = np.array(gradiants)
             x_guess -= np.linalg.pinv(delta_R) @ R
-            self.get_logger().info("-!"*15)
-            self.get_logger().info("R:" + str(R))
-            self.get_logger().info("delta_R:" + str(delta_R))
+            #self.get_logger().info("-!"*15)
+            #self.get_logger().info("R:" + str(R))
+            #self.get_logger().info("delta_R:" + str(delta_R))
             if max(R) < 0.001:
                 break
 
