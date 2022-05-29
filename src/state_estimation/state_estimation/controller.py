@@ -9,27 +9,29 @@ from geometry_msgs.msg import Twist, PoseStamped, PointStamped
 from sensor_msgs.msg import LaserScan
 
 
-STATE_INTERVAL = 10
-
-FRONT_RANGE = 15
-MAX_POSITION_CACHE = 10
-
-DEFAULT_ROTATION_SPEED = np.pi/8
-FORWARD_SPEED_MIN = 0.1
-FORWARD_SPEED_MAX = 0.2
-SPEED_INCREASE = 0.01
-
-TURN_TOLERANCE = 0.15 # 0.15rad ~ 8.5deg
-
-
 def cos_deg(a, b):
     return np.arccos( (a @ b) / (np.linalg.norm(a) * np.linalg.norm(b)) )
 
+STATE_INTERVAL = 10
 def state_interval(seconds: int):
     interval = seconds * STATE_INTERVAL
     if interval < 1:
         return 1
     return round(interval)
+
+
+MAX_POSITION_CACHE = 6
+
+FORWARD_SPEED_MIN = 0.15
+FORWARD_SPEED_MAX = 0.25
+SPEED_INCREASE = 0.01
+SPEED_INCREASE_INTERVAL = state_interval(0.2) # state executions
+
+DEFAULT_ROTATION_SPEED = np.pi/6
+ROTATION_TOLERANCE = 0.1 # 0.15rad ~ 8.5deg
+
+STARTUP_BREAK = state_interval(5) # state executions
+SLEEP_BREAK = 0.2 # seconds
 
 
 class RobotState(Enum):
@@ -68,10 +70,10 @@ class VelocityController(Node):
         self.get_logger().info("[Startup] Entered 'startup' state")
         # reset speed to minimum if switching from max speed after reaching goal
         self.forward_speed = FORWARD_SPEED_MIN
-        self.state_timer = state_interval(1)
+        self.state_timer = STARTUP_BREAK
         self.state = RobotState.STARTUP
 
-    def sleep(self, state_change: Callable, timer: int = 0.5):
+    def sleep(self, state_change: Callable, timer: int = SLEEP_BREAK):
         """
         Stops the robot for *timer* seconds.
         """
@@ -114,7 +116,7 @@ class VelocityController(Node):
             # explicitly stop movement because the state timer will execute sleeping state a bit later,
             # causing a further rotation
             self.drive(0., 0.)
-            self.sleep(self.driving, 0.5)
+            self.sleep(self.driving)
 
 
     def timer_cb(self):
@@ -155,16 +157,16 @@ class VelocityController(Node):
             if len(self.positions) >= MAX_POSITION_CACHE:
                 # check if correction of driving direction is neccessary
                 rotation_angle = self.calc_goal_rotation_angle()
-                if np.abs(rotation_angle) > TURN_TOLERANCE:
+                if np.abs(rotation_angle) > ROTATION_TOLERANCE:
                     self.get_logger().warn(f"[Driving] Rotation by '{rotation_angle}rad' required")
                     # sleep before switching to rotation state
-                    self.sleep(lambda: self.rotate(rotation_angle), 0.5)
+                    self.sleep(lambda: self.rotate(rotation_angle))
                     return
 
                 # increase forward speed if position cache is full
                 elif self.forward_speed < FORWARD_SPEED_MAX and self.state_timer == 0 and not self.state == RobotState.SLOW_DRIVING:
                     self.forward_speed += SPEED_INCREASE
-                    self.state_timer = state_interval(0.5)
+                    self.state_timer = SPEED_INCREASE_INTERVAL
                     self.get_logger().info(f"[Driving] Increased speed to '{self.forward_speed}'")
 
             # keep driving forward in driving state
@@ -198,16 +200,13 @@ class VelocityController(Node):
                 if len(self.positions) > 1:
                     rotation_angle = self.calc_goal_rotation_angle()
                     self.get_logger().warn(f"[GoalCB] Rotation by '{rotation_angle}rad'")
-                    self.sleep(lambda: self.rotate(rotation_angle), 0.5)
+                    self.sleep(lambda: self.rotate(rotation_angle))
                 else:
                     # if rotation is not possible yet, drive very slow to accumulate position data
                     self.slow_driving()
 
     def laser_cb(self, msg):
-        forward_ranges = msg.ranges[0:FRONT_RANGE] + msg.ranges[-FRONT_RANGE:]
-        self.forward_distance = min(forward_ranges)
-        self.shortest_direction = np.argmin(msg.ranges)
-        self.shortest_distance = msg.ranges[self.shortest_direction]
+        pass
 
     def position_cb(self, msg):
         self.positions.append(np.array([msg.point.x, msg.point.y, 0]))
