@@ -38,6 +38,7 @@ class RobotState(Enum):
     SLEEPING = auto()
     ROTATING = auto()
     DRIVING = auto()
+    SLOW_DRIVING = auto()
 
 
 class VelocityController(Node):
@@ -86,7 +87,13 @@ class VelocityController(Node):
         self.get_logger().info("[Driving] Entered 'driving' state")
         # clear position cache after changing direction or standing
         self.positions = []
+        self.forward_speed = FORWARD_SPEED_MIN
         self.state = RobotState.DRIVING
+
+    def slow_driving(self):
+        self.get_logger().info("[Driving] Entered 'slow_driving' state")
+        self.forward_speed = FORWARD_SPEED_MIN/4
+        self.state = RobotState.SLOW_DRIVING
 
     def rotate(self, angle: float, speed: float = DEFAULT_ROTATION_SPEED):
         """
@@ -100,16 +107,16 @@ class VelocityController(Node):
         self.get_logger().info(f"[Rotation] Rotating for '{time}s' with speed '{speed}rad'")
 
     def end_rotation(self):
-        # explicitly stop movement because the state timer will execute sleeping state a bit later,
-        # causing a further rotation
-        self.drive(0., 0.)
-
         # stop the rotation timer, it is only supposed to execute a single time
         if not self.rotation_timer.is_canceled():
             self.rotation_timer.cancel()
 
-        # delay the start of driving by half a second 
-        self.sleep(self.driving, 0.5)
+        # if no state change happened, delay the start of driving by half a second 
+        if self.state == RobotState.ROTATING:
+            # explicitly stop movement because the state timer will execute sleeping state a bit later,
+            # causing a further rotation
+            self.drive(0., 0.)
+            self.sleep(self.driving, 0.5)
 
 
     def timer_cb(self):
@@ -143,7 +150,7 @@ class VelocityController(Node):
                 self.drive(0., 0.)
             return
 
-        elif self.state == RobotState.DRIVING:
+        elif self.state == RobotState.DRIVING or self.state == RobotState.SLOW_DRIVING:
             if len(self.positions) >= MAX_POSITION_CACHE:
                 # check if correction of driving direction is neccessary
                 rotation_angle = self.calc_goal_rotation_angle()
@@ -154,7 +161,7 @@ class VelocityController(Node):
                     return
 
                 # increase forward speed if position cache is full
-                elif self.forward_speed < FORWARD_SPEED_MAX and self.state_timer == 0:
+                elif self.forward_speed < FORWARD_SPEED_MAX and self.state_timer == 0 and not self.state == RobotState.SLOW_DRIVING:
                     self.forward_speed += SPEED_INCREASE
                     self.state_timer = state_interval(0.5)
                     self.get_logger().info(f"[Driving] Increased speed to '{self.forward_speed}'")
@@ -184,11 +191,15 @@ class VelocityController(Node):
             self.get_logger().info(f'[GoalCB] Received a new goal: (x={goal[0]}, y={goal[1]})')
             self.goal = goal
 
-            # force rotation after receiving a new goal
+            # try forcing rotation after receiving a new goal
             if self.state == RobotState.DRIVING:
-                rotation_angle = self.calc_goal_rotation_angle()
-                self.get_logger().warn(f"[GoalCB] Rotation by '{rotation_angle}rad'")
-                self.sleep(lambda: self.rotate(rotation_angle), 0.5)
+                if len(self.positions) > 1:
+                    rotation_angle = self.calc_goal_rotation_angle()
+                    self.get_logger().warn(f"[GoalCB] Rotation by '{rotation_angle}rad'")
+                    self.sleep(lambda: self.rotate(rotation_angle), 0.5)
+                else:
+                    self.slow_driving()
+
 
     def laser_cb(self, msg):
         forward_ranges = msg.ranges[0:FRONT_RANGE] + msg.ranges[-FRONT_RANGE:]
