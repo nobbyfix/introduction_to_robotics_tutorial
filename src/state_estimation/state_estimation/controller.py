@@ -1,4 +1,3 @@
-from ctypes import Union
 from enum import Enum, auto
 from typing import Callable
 import numpy as np
@@ -51,9 +50,8 @@ class VelocityController(Node):
         self.positions = []
 
         self.forward_speed = 0
-        self.forward_distance = 0
-        self.shortest_direction = 0
-        self.shortest_distance = 0
+        self.post_sleep_state = None
+        self.rotation_timer = None
 
         self.state = None
         self.state_timer = 0
@@ -108,7 +106,7 @@ class VelocityController(Node):
 
     def end_rotation(self):
         # stop the rotation timer, it is only supposed to execute a single time
-        if not self.rotation_timer.is_canceled():
+        if (self.rotation_timer is not None) and (not self.rotation_timer.is_canceled()):
             self.rotation_timer.cancel()
 
         # if no state change happened, delay the start of driving by half a second 
@@ -136,10 +134,12 @@ class VelocityController(Node):
                 # drive with half speed to help prevent driving into walls
                 self.drive(linear=FORWARD_SPEED_MIN/2)
             return
+        # -- end startup state
 
         elif self.state == RobotState.ROTATING:
             # rotation is handled with a seperate timer, nothing to do here
             return
+        # -- end rotating state
 
         elif self.state == RobotState.SLEEPING:
             if self.state_timer == 0:
@@ -149,6 +149,7 @@ class VelocityController(Node):
                 # send drive message with 0 values to make sure the robot is staying still while sleeping
                 self.drive(0., 0.)
             return
+        # -- end sleeping state
 
         elif self.state == RobotState.DRIVING or self.state == RobotState.SLOW_DRIVING:
             if len(self.positions) >= MAX_POSITION_CACHE:
@@ -169,6 +170,7 @@ class VelocityController(Node):
             # keep driving forward in driving state
             self.drive(linear=self.forward_speed)
             return
+        # -- end driving state
 
     def drive(self, linear: float = 0., angular: float = 0.):
         msg = Twist()
@@ -198,8 +200,8 @@ class VelocityController(Node):
                     self.get_logger().warn(f"[GoalCB] Rotation by '{rotation_angle}rad'")
                     self.sleep(lambda: self.rotate(rotation_angle), 0.5)
                 else:
+                    # if rotation is not possible yet, drive very slow to accumulate position data
                     self.slow_driving()
-
 
     def laser_cb(self, msg):
         forward_ranges = msg.ranges[0:FRONT_RANGE] + msg.ranges[-FRONT_RANGE:]
